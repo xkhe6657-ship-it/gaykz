@@ -1,0 +1,64 @@
+-- BZ Silent Aim + Rayfield (single file, copy-paste ready)
+loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
+local Rayfield = getgenv().Rayfield
+
+local Win = Rayfield:CreateWindow({Name="BZ Silent Aim",LoadingTitle="silent",LoadingSubtitle="by BluezyGPT",ConfigurationSaving={Enabled=true,FolderName="BZSilent",FileName="cfg"},KeySystem=false})
+local T = Win:CreateTab("Main",4483362458)
+local S = Win:CreateTab("Settings",4483362458)
+
+local P,U,R,C=game.Players,game:GetService("UserInputService"),game:GetService("RunService"),workspace.CurrentCamera
+local LP,Mouse=P.LocalPlayer,LP:GetMouse()
+local CFG={Enabled=false,TeamCheck=true,WallCheck=true,FOV=120,HitPart="Head",Smooth=1,ShowFOV=true,FOVColor=Color3.fromRGB(255,50,50)}
+
+local Circle=Drawing.new("Circle")
+Circle.Visible=CFG.ShowFOV;Circle.Radius=CFG.FOV;Circle.Color=CFG.FOVColor;Circle.Thickness=1.5;Circle.Filled=false;Circle.Transparency=1
+
+local function Target()
+	local M,close=U:GetMouseLocation(),nil
+	for _,plr in ipairs(P:GetPlayers()) do
+		if plr==LP or not plr.Character then continue end
+		if CFG.TeamCheck and plr.Team==LP.Team then continue end
+		local part=plr.Character:FindFirstChild(CFG.HitPart)
+		if not part then continue end
+		if CFG.WallCheck then
+			local ray=RaycastParams.new()
+			ray.FilterDescendantsInstances={LP.Character,plr.Character}
+			ray.FilterType=Enum.RaycastFilterType.Exclude
+			local hit=workspace:Raycast(CFrame.Position,(part.Position-CFrame.Position).Unit*500,ray)
+			if hit and not hit.Instance:IsDescendantOf(plr.Character) then continue end
+		end
+		local pos,vis=C:WorldToViewportPoint(part.Position)
+		if not vis then continue end
+		local d=(Vector2.new(pos.X,pos.Y)-M).Magnitude
+		if d<M then M=d;close=part end
+	end
+	return close
+end
+
+local old;old=hookmetamethod(game,"__namecall",function(self,...)
+	if not CFG.Enabled then return old(self,...) end
+	local m=getnamecallmethod()
+	if self==Mouse and (m=="Hit" or m=="GetMouseLocation") then
+		local t=Target()
+		if t then return m=="Hit" and CFrame.new(t.Position) or Vector2.new(C:WorldToViewportPoint(t.Position)) end
+	end
+	return old(self,...)
+end)
+
+R.RenderStepped:Connect(function()
+	Circle.Visible=CFG.ShowFOV and CFG.Enabled
+	Circle.Radius=CFG.FOV;Circle.Color=CFG.FOVColor
+	Circle.Position=U:GetMouseLocation()
+end)
+
+T:CreateToggle({Name="Enabled",CurrentValue=false,Callback=function(v)CFG.Enabled=v end})
+T:CreateToggle({Name="Team Check",CurrentValue=true,Callback=function(v)CFG.TeamCheck=v end})
+T:CreateToggle({Name="Wall Check",CurrentValue=true,Callback=function(v)CFG.WallCheck=v end})
+T:CreateDropdown({Name="Hit Part",Options={"Head","HumanoidRootPart","Torso","UpperTorso","LowerTorso"},CurrentOption="Head",Callback=function(o)CFG.HitPart=o end})
+T:CreateSlider({Name="FOV",Range={10,500},Increment=5,CurrentValue=120,Callback=function(v)CFG.FOV=v end})
+T:CreateSlider({Name="Smoothness",Range={1,20},Increment=1,CurrentValue=1,Callback=function(v)CFG.Smooth=v end})
+S:CreateToggle({Name="Show FOV",CurrentValue=true,Callback=function(v)CFG.ShowFOV=v end})
+S:CreateColorPicker({Name="FOV Color",Color=CFG.FOVColor,Callback=function(c)CFG.FOVColor=c end})
+S:CreateKeybind({Name="Toggle",CurrentKeybind=Enum.KeyCode.Insert,HoldToInteract=false,Callback=function()CFG.Enabled=not CFG.Enabled end})
+S:CreateButton({Name="Unload",Callback=function()Circle:Remove()hookmetamethod(game,"__namecall",old)Rayfield:Destroy()end})
+Rayfield:LoadConfiguration()
