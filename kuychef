@@ -1,0 +1,130 @@
+-- BZ Silent Aim + Rayfield (robust loader, works on Synapse/Fluxus/Codex/Krnl)
+local Rayfield
+local ok, err = pcall(function()
+    Rayfield = loadstring(game:HttpGet("https://raw.githubusercontent.com/shlexware/Rayfield/main/source.lua"))()
+end)
+if not ok or not Rayfield then
+    warn("Rayfield load failed:", err)
+    return
+end
+
+local Win = Rayfield:CreateWindow({
+    Name = "BZ Silent Aim",
+    LoadingTitle = "silent aim",
+    LoadingSubtitle = "by BluezyGPT",
+    ConfigurationSaving = { Enabled = true, FolderName = "BZSilent", FileName = "cfg" },
+    KeySystem = false,
+})
+
+local Main = Win:CreateTab("Main", 4483362458)
+local Settings = Win:CreateTab("Settings", 4483362458)
+
+local Players = game:GetService("Players")
+local UIS = game:GetService("UserInputService")
+local RS = game:GetService("RunService")
+local Cam = workspace.CurrentCamera
+local LP = Players.LocalPlayer
+local Mouse = LP:GetMouse()
+
+local CFG = {
+    Enabled = false,
+    TeamCheck = true,
+    WallCheck = true,
+    FOV = 120,
+    HitPart = "Head",
+    Smoothness = 1,
+    ShowFOV = true,
+    FOVColor = Color3.fromRGB(255, 50, 50),
+}
+
+-- FOV Circle
+local Circle = Drawing.new("Circle")
+Circle.Visible = CFG.ShowFOV
+Circle.Radius = CFG.FOV
+Circle.Color = CFG.FOVColor
+Circle.Thickness = 1.5
+Circle.Filled = false
+Circle.Transparency = 1
+Circle.NumSides = 64
+
+-- Target selector
+local function GetTarget()
+    local mousePos = UIS:GetMouseLocation()
+    local closest, dist = nil, CFG.FOV
+
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr == LP then continue end
+        local char = plr.Character
+        if not char then continue end
+        if CFG.TeamCheck and plr.Team == LP.Team then continue end
+
+        local part = char:FindFirstChild(CFG.HitPart)
+        if not part then continue end
+
+        if CFG.WallCheck then
+            local params = RaycastParams.new()
+            params.FilterDescendantsInstances = {LP.Character, char}
+            params.FilterType = Enum.RaycastFilterType.Exclude
+            local origin = Cam.CFrame.Position
+            local dir = (part.Position - origin).Unit * 500
+            local hit = workspace:Raycast(origin, dir, params)
+            if hit and not hit.Instance:IsDescendantOf(char) then continue end
+        end
+
+        local screenPos, onScreen = Cam:WorldToViewportPoint(part.Position)
+        if not onScreen then continue end
+
+        local d = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
+        if d < dist then
+            dist = d
+            closest = part
+        end
+    end
+    return closest
+end
+
+-- Hook
+local oldNamecall
+oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
+    if not CFG.Enabled then return oldNamecall(self, ...) end
+    local method = getnamecallmethod()
+    if self == Mouse and (method == "Hit" or method == "GetMouseLocation") then
+        local target = GetTarget()
+        if target then
+            if method == "Hit" then
+                return CFrame.new(target.Position)
+            else
+                local sp = Cam:WorldToViewportPoint(target.Position)
+                return Vector2.new(sp.X, sp.Y)
+            end
+        end
+    end
+    return oldNamecall(self, ...)
+end)
+
+-- Render loop
+RS.RenderStepped:Connect(function()
+    Circle.Visible = CFG.ShowFOV and CFG.Enabled
+    Circle.Radius = CFG.FOV
+    Circle.Color = CFG.FOVColor
+    Circle.Position = UIS:GetMouseLocation()
+end)
+
+-- UI
+Main:CreateToggle({Name = "Enabled", CurrentValue = false, Callback = function(v) CFG.Enabled = v end})
+Main:CreateToggle({Name = "Team Check", CurrentValue = true, Callback = function(v) CFG.TeamCheck = v end})
+Main:CreateToggle({Name = "Wall Check", CurrentValue = true, Callback = function(v) CFG.WallCheck = v end})
+Main:CreateDropdown({Name = "Hit Part", Options = {"Head", "HumanoidRootPart", "Torso", "UpperTorso", "LowerTorso"}, CurrentOption = "Head", Callback = function(o) CFG.HitPart = o end})
+Main:CreateSlider({Name = "FOV Radius", Range = {10, 500}, Increment = 5, CurrentValue = 120, Callback = function(v) CFG.FOV = v end})
+Main:CreateSlider({Name = "Smoothness (1 = snap)", Range = {1, 20}, Increment = 1, CurrentValue = 1, Callback = function(v) CFG.Smoothness = v end})
+
+Settings:CreateToggle({Name = "Show FOV Circle", CurrentValue = true, Callback = function(v) CFG.ShowFOV = v end})
+Settings:CreateColorPicker({Name = "FOV Color", Color = CFG.FOVColor, Callback = function(c) CFG.FOVColor = c end})
+Settings:CreateKeybind({Name = "Toggle Keybind", CurrentKeybind = Enum.KeyCode.Insert, HoldToInteract = false, Callback = function() CFG.Enabled = not CFG.Enabled end})
+Settings:CreateButton({Name = "Unload Script", Callback = function()
+    Circle:Remove()
+    hookmetamethod(game, "__namecall", oldNamecall)
+    Rayfield:Destroy()
+end})
+
+Rayfield:LoadConfiguration()
